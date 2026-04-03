@@ -9,15 +9,16 @@ const DAS = 120;
 const ARR = 30;
 const LOCK_DELAY = 500;
 
+// 🎨 better colors
 const SHAPES = [
-  { name: "I", shape: [[1, 1, 1, 1]], color: "#00f0f0" },
+  { name: "I", shape: [[1, 1, 1, 1]], color: "#22d3ee" },
   {
     name: "O",
     shape: [
       [1, 1],
       [1, 1],
     ],
-    color: "#f0f000",
+    color: "#fde047",
   },
   {
     name: "T",
@@ -25,7 +26,7 @@ const SHAPES = [
       [0, 1, 0],
       [1, 1, 1],
     ],
-    color: "#a000f0",
+    color: "#c084fc",
   },
   {
     name: "L",
@@ -33,7 +34,7 @@ const SHAPES = [
       [1, 0, 0],
       [1, 1, 1],
     ],
-    color: "#f0a000",
+    color: "#fb923c",
   },
   {
     name: "J",
@@ -41,11 +42,28 @@ const SHAPES = [
       [0, 0, 1],
       [1, 1, 1],
     ],
-    color: "#0000f0",
+    color: "#60a5fa",
+  },
+
+  // ✅ NEW ONES
+  {
+    name: "S",
+    shape: [
+      [0, 1, 1],
+      [1, 1, 0],
+    ],
+    color: "#4ade80",
+  },
+  {
+    name: "Z",
+    shape: [
+      [1, 1, 0],
+      [0, 1, 1],
+    ],
+    color: "#f87171",
   },
 ];
 
-// 🎲 7-bag
 let bag = [];
 const shuffle = (a) => a.sort(() => Math.random() - 0.5);
 const getNextPiece = () => {
@@ -74,19 +92,37 @@ export default function Tetris() {
   const [score, setScore] = useState(0);
   const [lastRotate, setLastRotate] = useState(false);
   const [lockStart, setLockStart] = useState(null);
+  const [gameOver, setGameOver] = useState(true);
+  const [clearingRows, setClearingRows] = useState([]);
 
   const spawn = () => {
     const p = next || getNextPiece();
-    setPiece({ ...p, x: 4, y: 0 });
+    const newPiece = { ...p, x: 4, y: 0 };
+
+    if (collide(board, newPiece)) {
+      setGameOver(true);
+      return;
+    }
+
+    setPiece(newPiece);
     setNext(getNextPiece());
     setCanHold(true);
     setLockStart(null);
     setLastRotate(false);
   };
 
+  const startGame = () => {
+    bag = [];
+    setBoard(createBoard());
+    setScore(0);
+    setHold(null);
+    setNext(getNextPiece());
+    setGameOver(false);
+    setTimeout(spawn, 0);
+  };
+
   useEffect(() => {
     setNext(getNextPiece());
-    spawn();
   }, []);
 
   const collide = (b, p) =>
@@ -109,10 +145,8 @@ export default function Tetris() {
     return nb;
   };
 
-  // 🧠 T-spin
   const isTSpin = (p) => {
     if (p.name !== "T" || !lastRotate) return false;
-
     const cx = p.x + 1;
     const cy = p.y + 1;
     let corners = 0;
@@ -132,23 +166,27 @@ export default function Tetris() {
   };
 
   const clearLines = (b, p) => {
-    let lines = 0;
-    let nb = b.filter((row) => {
-      if (row.every((c) => c)) {
-        lines++;
-        return false;
-      }
-      return true;
+    let rows = [];
+    b.forEach((row, i) => {
+      if (row.every((c) => c)) rows.push(i);
     });
 
-    while (nb.length < ROWS) nb.unshift(Array(COLS).fill(null));
+    if (rows.length) {
+      setClearingRows(rows);
 
-    if (lines) {
-      const tspin = isTSpin(p);
-      setScore((s) => s + (tspin ? lines * 400 : lines * 100));
+      setTimeout(() => {
+        let nb = b.filter((_, i) => !rows.includes(i));
+        while (nb.length < ROWS) nb.unshift(Array(COLS).fill(null));
+
+        const tspin = isTSpin(p);
+        setScore((s) => s + (tspin ? rows.length * 400 : rows.length * 100));
+
+        setBoard(nb);
+        setClearingRows([]);
+      }, 120);
+    } else {
+      setBoard(b);
     }
-
-    setBoard(nb);
   };
 
   const tryMove = (np) => {
@@ -161,7 +199,8 @@ export default function Tetris() {
   };
 
   const drop = () => {
-    if (!piece) return;
+    if (!piece || gameOver) return;
+
     const np = { ...piece, y: piece.y + 1 };
 
     if (!collide(board, np)) {
@@ -178,6 +217,7 @@ export default function Tetris() {
   };
 
   const hardDrop = () => {
+    if (gameOver) return;
     let p = { ...piece };
     while (!collide(board, { ...p, y: p.y + 1 })) p.y++;
     const merged = merge(board, p);
@@ -187,7 +227,7 @@ export default function Tetris() {
   };
 
   const holdPiece = () => {
-    if (!canHold) return;
+    if (!canHold || gameOver) return;
 
     if (!hold) {
       setHold(piece);
@@ -200,9 +240,10 @@ export default function Tetris() {
     setCanHold(false);
   };
 
-  // ⌨️ input
   useEffect(() => {
     const down = (e) => {
+      if (gameOver) return;
+
       keys.current[e.code] = true;
 
       if (keyState.current[e.code]) {
@@ -216,10 +257,8 @@ export default function Tetris() {
         }
       }
 
-      // 🔁 ROTATION WITH WALL KICKS
       if (e.code === "ArrowUp") {
         const rotated = rotate(piece.shape);
-
         const kicks = [
           { x: 0, y: 0 },
           { x: -1, y: 0 },
@@ -236,7 +275,6 @@ export default function Tetris() {
             x: piece.x + k.x,
             y: piece.y + k.y,
           };
-
           if (!collide(board, np)) {
             setPiece(np);
             setLastRotate(true);
@@ -261,11 +299,12 @@ export default function Tetris() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [piece, hold]);
+  }, [piece, hold, gameOver]);
 
-  // 🎮 movement loop
   useEffect(() => {
     const loop = setInterval(() => {
+      if (gameOver) return;
+
       const now = Date.now();
 
       ["ArrowLeft", "ArrowRight"].forEach((code) => {
@@ -283,15 +322,13 @@ export default function Tetris() {
     }, 16);
 
     return () => clearInterval(loop);
-  }, [piece, board]);
+  }, [piece, board, gameOver]);
 
-  // gravity
   useEffect(() => {
     const i = setInterval(drop, 500);
     return () => clearInterval(i);
   });
 
-  // 👻 ghost
   const getGhost = () => {
     if (!piece) return null;
     let g = { ...piece };
@@ -299,30 +336,40 @@ export default function Tetris() {
     return g;
   };
 
-  // 🎨 draw
   useEffect(() => {
     const ctx = canvasRef.current.getContext("2d");
 
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = "#020617";
     ctx.fillRect(0, 0, COLS * BLOCK, ROWS * BLOCK);
+
+    // grid
+    ctx.strokeStyle = "#0f172a";
+    for (let x = 0; x < COLS; x++) {
+      for (let y = 0; y < ROWS; y++) {
+        ctx.strokeRect(x * BLOCK, y * BLOCK, BLOCK, BLOCK);
+      }
+    }
 
     board.forEach((r, y) => {
       r.forEach((c, x) => {
         if (c) {
-          ctx.fillStyle = c;
-          ctx.fillRect(x * BLOCK, y * BLOCK, BLOCK, BLOCK);
+          if (clearingRows.includes(y)) {
+            ctx.fillStyle = "white";
+            ctx.fillRect(x * BLOCK, y * BLOCK, BLOCK, BLOCK);
+          } else {
+            drawBlock(ctx, x, y, c);
+          }
         }
       });
     });
 
     const g = getGhost();
     if (g) {
-      ctx.globalAlpha = 0.3;
+      ctx.globalAlpha = 0.25;
       g.shape.forEach((r, y) => {
         r.forEach((v, x) => {
           if (v) {
-            ctx.fillStyle = g.color;
-            ctx.fillRect((g.x + x) * BLOCK, (g.y + y) * BLOCK, BLOCK, BLOCK);
+            drawBlock(ctx, g.x + x, g.y + y, g.color, true);
           }
         });
       });
@@ -332,37 +379,110 @@ export default function Tetris() {
     piece?.shape.forEach((r, y) => {
       r.forEach((v, x) => {
         if (v) {
-          ctx.fillStyle = piece.color;
-          ctx.fillRect(
-            (piece.x + x) * BLOCK,
-            (piece.y + y) * BLOCK,
-            BLOCK,
-            BLOCK,
-          );
+          drawBlock(ctx, piece.x + x, piece.y + y, piece.color);
         }
       });
     });
-  }, [board, piece]);
+  }, [board, piece, clearingRows]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100vh",
-        background: "#020617",
-        color: "white",
-        gap: 20,
-      }}
-    >
-      <canvas ref={canvasRef} width={COLS * BLOCK} height={ROWS * BLOCK} />
-      <div>
-        <p>Score: {score}</p>
-        <p>← → move | ↑ rotate</p>
-        <p>↓ soft | SPACE hard</p>
-        <p>C hold</p>
+    <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-black via-slate-900 to-black text-white gap-6">
+      <div className="flex items-center gap-10">
+        <div className="flex flex-col items-center gap-3">
+          <h2 className="text-sm tracking-widest text-gray-400">HOLD</h2>
+          <div className="w-24 h-24 flex items-center justify-center bg-black border border-slate-700 rounded-lg">
+            {hold && <Mini shape={hold} />}
+          </div>
+        </div>
+
+        <div className="relative p-3 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-900 shadow-[0_0_40px_rgba(56,189,248,0.6)]">
+          <canvas
+            ref={canvasRef}
+            width={COLS * BLOCK}
+            height={ROWS * BLOCK}
+            className="rounded-md bg-slate-900"
+          />
+
+          {gameOver && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 rounded-md">
+              <h1 className="text-2xl font-bold mb-4 text-red-500">
+                GAME OVER
+              </h1>
+              <button
+                onClick={startGame}
+                className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 rounded-lg font-bold"
+              >
+                PLAY AGAIN
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-center gap-4">
+          <h2 className="text-sm tracking-widest text-gray-400">NEXT</h2>
+          <div className="w-24 h-24 flex items-center justify-center bg-black border border-slate-700 rounded-lg">
+            {next && <Mini shape={next} />}
+          </div>
+
+          <div className="w-32 p-3 text-center bg-black border border-cyan-400 rounded-lg shadow-[0_0_20px_rgba(56,189,248,0.5)]">
+            <div className="text-xs text-gray-400">SCORE</div>
+            <div className="text-2xl font-bold text-cyan-400">{score}</div>
+          </div>
+        </div>
       </div>
+
+      {gameOver && (
+        <button
+          onClick={startGame}
+          className="px-8 py-3 bg-cyan-500 hover:bg-cyan-400 rounded-xl font-bold text-lg"
+        >
+          PLAY
+        </button>
+      )}
+    </div>
+  );
+}
+
+function drawBlock(ctx, x, y, color, ghost = false) {
+  const px = x * BLOCK;
+  const py = y * BLOCK;
+
+  ctx.fillStyle = color;
+  ctx.fillRect(px, py, BLOCK, BLOCK);
+
+  ctx.strokeStyle = ghost ? "rgba(255,255,255,0.2)" : "#020617";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px, py, BLOCK, BLOCK);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath();
+  ctx.moveTo(px, py + BLOCK);
+  ctx.lineTo(px, py);
+  ctx.lineTo(px + BLOCK, py);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.beginPath();
+  ctx.moveTo(px + BLOCK, py);
+  ctx.lineTo(px + BLOCK, py + BLOCK);
+  ctx.lineTo(px, py + BLOCK);
+  ctx.stroke();
+}
+
+function Mini({ shape }) {
+  return (
+    <div>
+      {shape.shape.map((row, y) => (
+        <div key={y} className="flex">
+          {row.map((v, x) => (
+            <div
+              key={x}
+              className="w-4 h-4 border border-slate-700"
+              style={{ background: v ? shape.color : "transparent" }}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
